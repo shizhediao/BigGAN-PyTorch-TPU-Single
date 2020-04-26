@@ -37,8 +37,10 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
       # If accumulating gradients, loop multiple times before an optimizer step
       D.optim.zero_grad()
       for accumulation_index in range(config['num_D_accumulations']):
-        z_.sample_()
-        y_.sample_()
+        # z_.sample_()
+        # y_.sample_()
+        utils.distri_sample_(z_)
+        utils.distri_sample_(y_)
         D_fake, D_real = GD(z_[:config['batch_size']], y_[:config['batch_size']], 
                             x[counter], y[counter], train_G=False, 
                             split_D=config['split_D'])
@@ -69,8 +71,10 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
     
     # If accumulating gradients, loop multiple times
     for accumulation_index in range(config['num_G_accumulations']):    
-      z_.sample_()
-      y_.sample_()
+      # z_.sample_()
+      # y_.sample_()
+      utils.distri_sample_(z_)
+      utils.distri_sample_(y_)
       D_fake = GD(z_, y_, train_G=True, split_D=config['split_D'])
       G_loss = losses.generator_loss(D_fake) / float(config['num_G_accumulations'])
       G_loss.backward()

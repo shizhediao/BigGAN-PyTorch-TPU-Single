@@ -864,8 +864,10 @@ def progress(items, desc='', total=None, min_delay=0.1, displaytype='s1k'):
 # Sample function for use with inception metrics
 def sample(G, z_, y_, config):
   with torch.no_grad():
-    z_.sample_()
-    y_.sample_()
+    # z_.sample_()
+    # y_.sample_()
+    distri_sample_(z_)
+    distri_sample_(y_)
     if config['parallel']:
       G_z =  nn.parallel.data_parallel(G, (z_, G.shared(y_)))
     else:
@@ -887,7 +889,8 @@ def sample_sheet(device, G, classes_per_sheet, num_classes, samples_per_class, p
     y = torch.arange(i * classes_per_sheet, (i + 1) * classes_per_sheet, device=device)
     for j in range(samples_per_class):
       if (z_ is not None) and hasattr(z_, 'sample_') and classes_per_sheet <= z_.size(0):
-        z_.sample_()
+        # z_.sample_()
+        distri_sample_(z_)
       else:
         z_ = torch.randn(classes_per_sheet, G.dim_z, device=device)
       with torch.no_grad():
@@ -1056,45 +1059,68 @@ def sample_1hot(device, batch_size, num_classes):
 # x.init_distribution(dist_type, **dist_kwargs)
 # x = x.to(device,dtype)
 # This is partially based on https://discuss.pytorch.org/t/subclassing-torch-tensor/23754/2
-class Distribution(torch.Tensor):
-  # Init the params of the distribution
-  def init_distribution(self, dist_type, **kwargs):    
-    self.dist_type = dist_type
-    self.dist_kwargs = kwargs
-    if self.dist_type == 'normal':
-      self.mean, self.var = kwargs['mean'], kwargs['var']
-    elif self.dist_type == 'categorical':
-      self.num_categories = kwargs['num_categories']
+# class Distribution(torch.Tensor):
+#   # Init the params of the distribution
+#   def init_distribution(self, dist_type, **kwargs):
+#     self.dist_type = dist_type
+#     self.dist_kwargs = kwargs
+#     if self.dist_type == 'normal':
+#       self.mean, self.var = kwargs['mean'], kwargs['var']
+#     elif self.dist_type == 'categorical':
+#       self.num_categories = kwargs['num_categories']
+#
+#   def sample_(self):
+#     if self.dist_type == 'normal':
+#       self.normal_(self.mean, self.var)
+#     elif self.dist_type == 'categorical':
+#       self.random_(0, self.num_categories)
+#     # return self.variable
+#
+#   # Silly hack: overwrite the to() method to wrap the new object
+#   # in a distribution as well
+#   def to(self, *args, **kwargs):
+#     new_obj = Distribution(self)
+#     new_obj.init_distribution(self.dist_type, **self.dist_kwargs)
+#     new_obj.data = super().to(*args, **kwargs)
+#     return new_obj
 
-  def sample_(self):
-    if self.dist_type == 'normal':
-      self.normal_(self.mean, self.var)
-    elif self.dist_type == 'categorical':
-      self.random_(0, self.num_categories)    
-    # return self.variable
-    
-  # Silly hack: overwrite the to() method to wrap the new object
-  # in a distribution as well
-  def to(self, *args, **kwargs):
-    new_obj = Distribution(self)
-    new_obj.init_distribution(self.dist_type, **self.dist_kwargs)
-    new_obj.data = super().to(*args, **kwargs)    
-    return new_obj
+def distri_sample_(distri_tensor):
+  if distri_tensor.dist_type == 'normal':
+    distri_tensor.normal_(distri_tensor.mean, distri_tensor.var)
+  elif distri_tensor.dist_type == 'categorical':
+    distri_tensor.random_(0, distri_tensor.num_categories)
+  #return re
+
+def distri_init_(distri_tensor, dist_type, **kwargs):
+    distri_tensor.dist_type = dist_type
+    distri_tensor.dist_kwargs = kwargs
+    if distri_tensor.dist_type == 'normal':
+      distri_tensor.mean, distri_tensor.var = kwargs['mean'], kwargs['var']
+    elif distri_tensor.dist_type == 'categorical':
+      distri_tensor.num_categories = kwargs['num_categories']
+    return distri_tensor
 
 
 # Convenience function to prepare a z and y vector
 def prepare_z_y(device, G_batch_size, dim_z, nclasses,
                 fp16=False,z_var=1.0):
-  z_ = Distribution(torch.randn(G_batch_size, dim_z, requires_grad=False))
-  z_.init_distribution('normal', mean=0, var=z_var)
-  z_ = z_.to(device,torch.float16 if fp16 else torch.float32)   
-  
-  if fp16:
-    z_ = z_.half()
+  #finish tpu
+  z_ = torch.randn(G_batch_size, dim_z, requires_grad=False, device=device, dtype=torch.float16 if fp16 else torch.float32)
+  z_ = distri_init_(z_, 'normal', mean=0, var=z_var)
 
-  y_ = Distribution(torch.zeros(G_batch_size, requires_grad=False))
-  y_.init_distribution('categorical',num_categories=nclasses)
-  y_ = y_.to(device, torch.int64)
+  y_ = torch.zeros(G_batch_size, requires_grad=False, device=device, dtype=torch.int64)
+  y_ = distri_init_(y_, 'categorical', num_categories=nclasses)
+
+  # z_ = Distribution(torch.randn(G_batch_size, dim_z, requires_grad=False))
+  # z_.init_distribution('normal', mean=0, var=z_var)
+  # z_ = z_.to(device,torch.float16 if fp16 else torch.float32)
+  #
+  # if fp16:
+  #   z_ = z_.half()
+  #
+  # y_ = Distribution(torch.zeros(G_batch_size, requires_grad=False))
+  # y_.init_distribution('categorical',num_categories=nclasses)
+  # y_ = y_.to(device, torch.int64)
   return z_, y_
 
 
