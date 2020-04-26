@@ -586,7 +586,7 @@ def get_data_loaders(dataset, data_root=None, augment=False, batch_size=64,
 # Utility file to seed rngs
 def seed_rng(seed):
   torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
+  # torch.cuda.manual_seed(seed)
   np.random.seed(seed)
 
 
@@ -874,7 +874,7 @@ def sample(G, z_, y_, config):
 
 
 # Sample function for sample sheets
-def sample_sheet(G, classes_per_sheet, num_classes, samples_per_class, parallel,
+def sample_sheet(device, G, classes_per_sheet, num_classes, samples_per_class, parallel,
                  samples_root, experiment_name, folder_number, z_=None):
   # Prepare sample directory
   if not os.path.isdir('%s/%s' % (samples_root, experiment_name)):
@@ -884,12 +884,12 @@ def sample_sheet(G, classes_per_sheet, num_classes, samples_per_class, parallel,
   # loop over total number of sheets
   for i in range(num_classes // classes_per_sheet):
     ims = []
-    y = torch.arange(i * classes_per_sheet, (i + 1) * classes_per_sheet, device='cuda')
+    y = torch.arange(i * classes_per_sheet, (i + 1) * classes_per_sheet, device=device)
     for j in range(samples_per_class):
       if (z_ is not None) and hasattr(z_, 'sample_') and classes_per_sheet <= z_.size(0):
         z_.sample_()
       else:
-        z_ = torch.randn(classes_per_sheet, G.dim_z, device='cuda')        
+        z_ = torch.randn(classes_per_sheet, G.dim_z, device=device)
       with torch.no_grad():
         if parallel:
           o = nn.parallel.data_parallel(G, (z_[:classes_per_sheet], G.shared(y)))
@@ -908,31 +908,31 @@ def sample_sheet(G, classes_per_sheet, num_classes, samples_per_class, parallel,
 
 
 # Interp function; expects x0 and x1 to be of shape (shape0, 1, rest_of_shape..)
-def interp(x0, x1, num_midpoints):
-  lerp = torch.linspace(0, 1.0, num_midpoints + 2, device='cuda').to(x0.dtype)
+def interp(device, x0, x1, num_midpoints):
+  lerp = torch.linspace(0, 1.0, num_midpoints + 2, device=device).to(x0.dtype)
   return ((x0 * (1 - lerp.view(1, -1, 1))) + (x1 * lerp.view(1, -1, 1)))
 
 
 # interp sheet function
 # Supports full, class-wise and intra-class interpolation
-def interp_sheet(G, num_per_sheet, num_midpoints, num_classes, parallel,
+def interp_sheet(device, G, num_per_sheet, num_midpoints, num_classes, parallel,
                  samples_root, experiment_name, folder_number, sheet_number=0,
-                 fix_z=False, fix_y=False, device='cuda'):
+                 fix_z=False, fix_y=False):
   # Prepare zs and ys
   if fix_z: # If fix Z, only sample 1 z per row
     zs = torch.randn(num_per_sheet, 1, G.dim_z, device=device)
     zs = zs.repeat(1, num_midpoints + 2, 1).view(-1, G.dim_z)
   else:
-    zs = interp(torch.randn(num_per_sheet, 1, G.dim_z, device=device),
+    zs = interp(device, torch.randn(num_per_sheet, 1, G.dim_z, device=device),
                 torch.randn(num_per_sheet, 1, G.dim_z, device=device),
                 num_midpoints).view(-1, G.dim_z)
   if fix_y: # If fix y, only sample 1 z per row
-    ys = sample_1hot(num_per_sheet, num_classes)
+    ys = sample_1hot(device, num_per_sheet, num_classes)
     ys = G.shared(ys).view(num_per_sheet, 1, -1)
     ys = ys.repeat(1, num_midpoints + 2, 1).view(num_per_sheet * (num_midpoints + 2), -1)
   else:
-    ys = interp(G.shared(sample_1hot(num_per_sheet, num_classes)).view(num_per_sheet, 1, -1),
-                G.shared(sample_1hot(num_per_sheet, num_classes)).view(num_per_sheet, 1, -1),
+    ys = interp(device, G.shared(sample_1hot(device, num_per_sheet, num_classes)).view(num_per_sheet, 1, -1),
+                G.shared(sample_1hot(device, num_per_sheet, num_classes)).view(num_per_sheet, 1, -1),
                 num_midpoints).view(num_per_sheet * (num_midpoints + 2), -1)
   # Run the net--note that we've already passed y through G.shared.
   if G.fp16:
@@ -1044,7 +1044,7 @@ def count_parameters(module):
 
    
 # Convenience function to sample an index, not actually a 1-hot
-def sample_1hot(batch_size, num_classes, device='cuda'):
+def sample_1hot(device, batch_size, num_classes):
   return torch.randint(low=0, high=num_classes, size=(batch_size,),
           device=device, dtype=torch.int64, requires_grad=False)
 
@@ -1083,7 +1083,7 @@ class Distribution(torch.Tensor):
 
 
 # Convenience function to prepare a z and y vector
-def prepare_z_y(G_batch_size, dim_z, nclasses, device='cuda', 
+def prepare_z_y(device, G_batch_size, dim_z, nclasses,
                 fp16=False,z_var=1.0):
   z_ = Distribution(torch.randn(G_batch_size, dim_z, requires_grad=False))
   z_.init_distribution('normal', mean=0, var=z_var)

@@ -8,6 +8,8 @@ import os
 
 import utils
 import losses
+import torch_xla
+import torch_xla.core.xla_model as xm
 
 
 # Dummy training function for debugging
@@ -54,9 +56,10 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
         print('using modified ortho reg in D')
         utils.ortho(D, config['D_ortho'])
       
-      D.optim.step()
-    
-    # Optionally toggle "requires_grad"
+      # D.optim.step()
+      xm.optimizer_step(D.optim, barrier=True)
+
+      # Optionally toggle "requires_grad"
     if config['toggle_grads']:
       utils.toggle_grad(D, False)
       utils.toggle_grad(G, True)
@@ -78,8 +81,8 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
       # Don't ortho reg shared, it makes no sense. Really we should blacklist any embeddings for this
       utils.ortho(G, config['G_ortho'], 
                   blacklist=[param for param in G.shared.parameters()])
-    G.optim.step()
-    
+    # G.optim.step()
+    xm.optimizer_step(G.optim, barrier=True)
     # If we have an ema, update it, regardless of if we test with it or not
     if config['ema']:
       ema.update(state_dict['itr'])
@@ -95,7 +98,7 @@ def GAN_training_function(G, D, GD, z_, y_, ema, state_dict, config):
     requested), and prepares sample sheets: one consisting of samples given
     a fixed noise seed (to show how the model evolves throughout training),
     a set of full conditional sample sheets, and a set of interp sheets. '''
-def save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y, 
+def save_and_sample(device, G, D, G_ema, z_, y_, fixed_z, fixed_y,
                     state_dict, config, experiment_name):
   utils.save_weights(G, D, state_dict, config['weights_root'],
                      experiment_name, None, G_ema if config['ema'] else None)
@@ -131,7 +134,7 @@ def save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y,
   torchvision.utils.save_image(fixed_Gz.float().cpu(), image_filename,
                              nrow=int(fixed_Gz.shape[0] **0.5), normalize=True)
   # For now, every time we save, also save sample sheets
-  utils.sample_sheet(which_G,
+  utils.sample_sheet(device, which_G,
                      classes_per_sheet=utils.classes_per_sheet_dict[config['dataset']],
                      num_classes=config['n_classes'],
                      samples_per_class=10, parallel=config['parallel'],
@@ -141,7 +144,7 @@ def save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y,
                      z_=z_)
   # Also save interp sheets
   for fix_z, fix_y in zip([False, False, True], [False, True, False]):
-    utils.interp_sheet(which_G,
+    utils.interp_sheet(device, which_G,
                        num_per_sheet=16,
                        num_midpoints=8,
                        num_classes=config['n_classes'],
@@ -150,7 +153,7 @@ def save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y,
                        experiment_name=experiment_name,
                        folder_number=state_dict['itr'],
                        sheet_number=0,
-                       fix_z=fix_z, fix_y=fix_y, device='cuda')
+                       fix_z=fix_z, fix_y=fix_y)
 
 
   

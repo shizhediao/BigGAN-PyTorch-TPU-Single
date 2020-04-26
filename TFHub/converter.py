@@ -22,6 +22,9 @@ from torchvision.utils import save_image
 import tensorflow as tf
 import tensorflow_hub as hub
 import parse
+import torch_xla
+import torch_xla.core.xla_model as xm
+
 
 # import reference biggan from this folder
 import biggan_v1 as biggan_for_conversion
@@ -32,8 +35,8 @@ import BigGAN
 
 
 
-
-DEVICE = 'cuda'
+DEVICE=xm.xla_device()
+# DEVICE = 'cuda'
 HDF5_TMPL = 'biggan-{}.h5'
 PTH_TMPL = 'biggan-{}.pth'
 MODULE_PATH_TMPL = 'https://tfhub.dev/deepmind/biggan-{}/2'

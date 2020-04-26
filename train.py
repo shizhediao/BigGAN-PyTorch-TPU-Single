@@ -28,6 +28,9 @@ import utils
 import losses
 import train_fns
 from sync_batchnorm import patch_replication_callback
+import torch_xla
+import torch_xla.core.xla_model as xm
+
 
 # The main training file. Config is a dictionary specifying the configuration
 # of this training run.
@@ -47,7 +50,8 @@ def run(config):
     print('Skipping initialization for training resumption...')
     config['skip_init'] = True
   config = utils.update_config_roots(config)
-  device = 'cuda'
+  # device = 'cuda'
+  device = xm.xla_device()
   
   # Seed RNG
   utils.seed_rng(config['seed'])
@@ -56,7 +60,7 @@ def run(config):
   utils.prepare_root(config)
 
   # Setup cudnn.benchmark for free speed
-  torch.backends.cudnn.benchmark = True
+  # torch.backends.cudnn.benchmark = True
 
   # Import the model--this line allows us to dynamically select different files.
   model = __import__(config['model'])
@@ -134,16 +138,16 @@ def run(config):
                                       'start_itr': state_dict['itr']})
 
   # Prepare inception metrics: FID and IS
-  get_inception_metrics = inception_utils.prepare_inception_metrics(config['dataset'], config['parallel'], config['no_fid'])
+  get_inception_metrics = inception_utils.prepare_inception_metrics(device, config['dataset'], config['parallel'], config['no_fid'])
 
   # Prepare noise and randomly sampled label arrays
   # Allow for different batch sizes in G
   G_batch_size = max(config['G_batch_size'], config['batch_size'])
-  z_, y_ = utils.prepare_z_y(G_batch_size, G.dim_z, config['n_classes'],
-                             device=device, fp16=config['G_fp16'])
+  z_, y_ = utils.prepare_z_y(device, G_batch_size, G.dim_z, config['n_classes'],
+                             fp16=config['G_fp16'])
   # Prepare a fixed z & y to see individual sample evolution throghout training
-  fixed_z, fixed_y = utils.prepare_z_y(G_batch_size, G.dim_z,
-                                       config['n_classes'], device=device,
+  fixed_z, fixed_y = utils.prepare_z_y(device, G_batch_size, G.dim_z,
+                                       config['n_classes'],
                                        fp16=config['G_fp16'])  
   fixed_z.sample_()
   fixed_y.sample_()
@@ -202,7 +206,7 @@ def run(config):
           G.eval()
           if config['ema']:
             G_ema.eval()
-        train_fns.save_and_sample(G, D, G_ema, z_, y_, fixed_z, fixed_y, 
+        train_fns.save_and_sample(device, G, D, G_ema, z_, y_, fixed_z, fixed_y,
                                   state_dict, config, experiment_name)
 
       # Test every specified interval

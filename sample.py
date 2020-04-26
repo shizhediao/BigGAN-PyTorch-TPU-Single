@@ -19,6 +19,8 @@ import inception_utils
 import utils
 import losses
 
+import torch_xla
+import torch_xla.core.xla_model as xm
 
 
 def run(config):
@@ -46,13 +48,14 @@ def run(config):
   config = utils.update_config_roots(config)
   config['skip_init'] = True
   config['no_optim'] = True
-  device = 'cuda'
-  
+  # device = 'cuda'
+  device = xm.xla_device()
+
   # Seed RNG
   utils.seed_rng(config['seed'])
    
   # Setup cudnn.benchmark for free speed
-  torch.backends.cudnn.benchmark = True
+  # torch.backends.cudnn.benchmark = True
   
   # Import the model--this line allows us to dynamically select different files.
   model = __import__(config['model'])
@@ -60,7 +63,8 @@ def run(config):
                        else utils.name_from_config(config))
   print('Experiment name is %s' % experiment_name)
   
-  G = model.Generator(**config).cuda()
+  # G = model.Generator(**config).cuda()
+  G = model.Generator(**config).to(device)
   utils.count_parameters(G)
   
   # Load weights
@@ -128,7 +132,7 @@ def run(config):
                          experiment_name=experiment_name,
                          folder_number=config['sample_sheet_folder_num'], 
                          sheet_number=0,
-                         fix_z=fix_z, fix_y=fix_y, device='cuda')
+                         fix_z=fix_z, fix_y=fix_y, device=device)
   # Sample random sheet
   if config['sample_random']:
     print('Preparing random sample sheet...')

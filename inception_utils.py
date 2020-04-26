@@ -258,12 +258,13 @@ def accumulate_inception_activations(sample, net, num_inception_images=50000):
 
 
 # Load and wrap the Inception model
-def load_inception_net(parallel=False):
+def load_inception_net(device, parallel=False):
   inception_model = inception_v3(pretrained=True, transform_input=False)
-  inception_model = WrapInception(inception_model.eval()).cuda()
-  if parallel:
-    print('Parallelizing Inception module...')
-    inception_model = nn.DataParallel(inception_model)
+  # inception_model = WrapInception(inception_model.eval()).cuda()
+  inception_model = WrapInception(inception_model.eval()).to(device)
+  # if parallel:
+  #   print('Parallelizing Inception module...')
+  #   inception_model = nn.DataParallel(inception_model)
   return inception_model
 
 
@@ -271,7 +272,7 @@ def load_inception_net(parallel=False):
 # and iterates until it accumulates config['num_inception_images'] images.
 # The iterator can return samples with a different batch size than used in
 # training, using the setting confg['inception_batchsize']
-def prepare_inception_metrics(dataset, parallel, no_fid=False):
+def prepare_inception_metrics(device, dataset, parallel, no_fid=False):
   # Load metrics; this is intentionally not in a try-except loop so that
   # the script will crash here if it cannot find the Inception moments.
   # By default, remove the "hdf5" from dataset
@@ -279,7 +280,7 @@ def prepare_inception_metrics(dataset, parallel, no_fid=False):
   data_mu = np.load(dataset+'_inception_moments.npz')['mu']
   data_sigma = np.load(dataset+'_inception_moments.npz')['sigma']
   # Load network
-  net = load_inception_net(parallel)
+  net = load_inception_net(device, parallel)
   def get_inception_metrics(sample, num_inception_images, num_splits=10, 
                             prints=True, use_torch=True):
     if prints:
@@ -300,7 +301,7 @@ def prepare_inception_metrics(dataset, parallel, no_fid=False):
       if prints:
         print('Covariances calculated, getting FID...')
       if use_torch:
-        FID = torch_calculate_frechet_distance(mu, sigma, torch.tensor(data_mu).float().cuda(), torch.tensor(data_sigma).float().cuda())
+        FID = torch_calculate_frechet_distance(mu, sigma, torch.tensor(data_mu).float().to(device), torch.tensor(data_sigma).float().to(device))
         FID = float(FID.cpu().numpy())
       else:
         FID = numpy_calculate_frechet_distance(mu.cpu().numpy(), sigma.cpu().numpy(), data_mu, data_sigma)

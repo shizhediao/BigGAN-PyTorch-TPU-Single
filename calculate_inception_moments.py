@@ -15,6 +15,9 @@ import utils
 import inception_utils
 from tqdm import tqdm, trange
 from argparse import ArgumentParser
+import torch_xla
+import torch_xla.core.xla_model as xm
+
 
 def prepare_parser():
   usage = 'Calculate and store inception metrics.'
@@ -54,7 +57,8 @@ def run(config):
   # Load inception net
   net = inception_utils.load_inception_net(parallel=config['parallel'])
   pool, logits, labels = [], [], []
-  device = 'cuda'
+  # device = 'cuda'
+  device = xm.xla_device()
   for i, (x, y) in enumerate(tqdm(loaders[0])):
     x = x.to(device)
     with torch.no_grad():
