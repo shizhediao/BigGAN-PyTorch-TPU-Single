@@ -53,12 +53,12 @@ def run(config):
   # Get loader
   config['drop_last'] = False
   loaders = utils.get_data_loaders(**config)
-
-  # Load inception net
-  net = inception_utils.load_inception_net(parallel=config['parallel'])
-  pool, logits, labels = [], [], []
   # device = 'cuda'
   device = xm.xla_device()
+  # Load inception net
+  net = inception_utils.load_inception_net(device, parallel=config['parallel'])
+  pool, logits, labels = [], [], []
+
   for i, (x, y) in enumerate(tqdm(loaders[0])):
     x = x.to(device)
     with torch.no_grad():
